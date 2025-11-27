@@ -1,0 +1,25 @@
+{
+  "name": "08-mount-oss-vite-react",
+  "version": "1.0.0",
+  "description": "通过挂载 OSS 部署 Vite React 应用到 Scalebox 沙盒",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "upload": "tsx scripts/upload_oss.ts",
+    "deploy": "tsx scripts/mount_oss.ts"
+  },
+  "keywords": ["scalebox", "oss", "mount", "vite", "react"],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.14.0",
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.670.0",
+    "@scalebox/sdk": "^3.7.0",
+    "dotenv": "^17.2.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
