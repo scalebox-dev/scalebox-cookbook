@@ -41,12 +41,11 @@ pnpm run create
 
 1. **创建 Scalebox 沙盒** - 基于 base 镜像
 2. **更新 apt 包列表** - `apt update`
-3. **安装 vim** - `apt install -y vim`
-4. **安装 nvm** - Node Version Manager
-5. **配置 .bash_profile** - 设置 nvm 环境
-6. **安装 Node.js 24** - 使用 nvm 安装
-7. **验证安装** - 检查 Node.js 和 npm 版本
-8. **创建模板** - 自动将沙盒保存为模板
+3. **安装 nvm** - Node Version Manager
+4. **配置 .bash_profile** - 设置 nvm 环境
+5. **安装 Node.js 24** - 使用 nvm 安装
+6. **验证安装** - 检查 Node.js 和 npm 版本
+7. **创建模板** - 自动将沙盒保存为模板
 
 ## 模板配置
 
@@ -63,9 +62,6 @@ pnpm run create
 ```bash
 # 更新 apt
 apt update
-
-# 安装 vim
-apt install vim
 
 # 安装 nvm (参考 https://nodejs.org/en/download)
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
