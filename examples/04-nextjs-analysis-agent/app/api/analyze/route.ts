@@ -183,7 +183,20 @@ export async function POST(req: NextRequest) {
       ],
     };
 
-    // 工具执行函数映射
+    // 创建沙箱获取 context_id
+    console.log('\n=== 创建 Scalebox 沙箱 ===');
+    let contextId: string;
+    try {
+      const sandboxResult = await callMCPTool('create_sandbox', { language: 'python' });
+      const sandbox = JSON.parse(sandboxResult);
+      contextId = sandbox.context_id;
+      console.log('✅ 沙箱创建成功, Context ID:', contextId);
+    } catch (error: any) {
+      console.error('❌ 创建沙箱失败:', error.message);
+      throw new Error('创建沙箱失败: ' + error.message);
+    }
+
+    // 工具执行函数映射（使用 Scalebox MCP 正确的参数名称）
     const toolExecutors: Record<string, (input: any) => Promise<string>> = {
       write_file: async (input: any) => {
         console.log(`\n🔧 EXECUTOR: write_file`);
@@ -201,20 +214,26 @@ export async function POST(req: NextRequest) {
           }
         }
         
-        const path = params?.path || params?.file_path;
+        // Scalebox MCP 使用 file_path 而不是 path
+        const filePath = params?.path || params?.file_path;
         const content = params?.content || params?.file_content || params?.data;
         
-        console.log('提取的 path:', path);
+        console.log('提取的 file_path:', filePath);
         console.log('提取的 content 长度:', content?.length || 0);
         
-        if (!path) {
+        if (!filePath) {
           throw new Error(`write_file 缺少 path 参数。接收到的参数: ${JSON.stringify(input).substring(0, 200)}`);
         }
         if (content === undefined || content === null) {
           throw new Error(`write_file 缺少 content 参数。接收到的参数: ${JSON.stringify(input).substring(0, 200)}`);
         }
         
-        return await callMCPTool('write_file', { path, content: String(content) });
+        // 使用 Scalebox MCP 正确的参数名：file_path, content, context_id
+        return await callMCPTool('write_file', { 
+          file_path: String(filePath), 
+          content: String(content),
+          context_id: contextId
+        });
       },
       
       install_packages: async (input: any) => {
@@ -239,7 +258,11 @@ export async function POST(req: NextRequest) {
           throw new Error(`install_packages 缺少 packages 参数。接收到的参数: ${JSON.stringify(input).substring(0, 200)}`);
         }
         
-        return await callMCPTool('install_packages', { packages: String(packages) });
+        // 使用 Scalebox MCP 正确的参数名：packages, context_id
+        return await callMCPTool('install_packages', { 
+          packages: String(packages),
+          context_id: contextId
+        });
       },
       
       run_code: async (input: any) => {
@@ -265,7 +288,12 @@ export async function POST(req: NextRequest) {
           throw new Error(`run_code 缺少 code 参数。接收到的参数: ${JSON.stringify(input).substring(0, 200)}`);
         }
         
-        return await callMCPTool('run_code', { code: String(code), language: 'python' });
+        // 使用 Scalebox MCP 正确的参数名：code, language, context_id
+        return await callMCPTool('execute_code', { 
+          code: String(code), 
+          language: 'python',
+          context_id: contextId
+        });
       },
       
       read_file: async (input: any) => {
@@ -283,14 +311,19 @@ export async function POST(req: NextRequest) {
           }
         }
         
-        const path = params?.path || params?.file_path || params?.filename;
-        console.log('提取的 path:', path);
+        // Scalebox MCP 使用 file_path 而不是 path
+        const filePath = params?.path || params?.file_path || params?.filename;
+        console.log('提取的 file_path:', filePath);
         
-        if (!path) {
+        if (!filePath) {
           throw new Error(`read_file 缺少 path 参数。接收到的参数: ${JSON.stringify(input).substring(0, 200)}`);
         }
         
-        return await callMCPTool('read_file', { path: String(path) });
+        // 使用 Scalebox MCP 正确的参数名：file_path, context_id
+        return await callMCPTool('read_file', { 
+          file_path: String(filePath),
+          context_id: contextId
+        });
       },
     };
 
@@ -550,7 +583,10 @@ export async function POST(req: NextRequest) {
           for (const config of chartPaths) {
             try {
               console.log(`读取: ${config.path}`);
-              const fileContent = await callMCPTool('read_file', { path: config.path });
+              const fileContent = await callMCPTool('read_file', { 
+                file_path: config.path,
+                context_id: contextId
+              });
               
               // 提取 base64 数据
               let base64Data = fileContent;

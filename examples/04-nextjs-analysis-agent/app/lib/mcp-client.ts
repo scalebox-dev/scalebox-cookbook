@@ -1,94 +1,118 @@
-// MCP 客户端工具类
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+// 基于 HTTP 的 Scalebox MCP 客户端
+interface MCPRequest {
+  jsonrpc: '2.0';
+  id: number;
+  method: string;
+  params?: Record<string, unknown>;
+}
 
-let mcpClient: Client | null = null;
+interface MCPResponse {
+  jsonrpc: '2.0';
+  id: number;
+  result?: {
+    content?: Array<{ type: string; text: string }>;
+    isError?: boolean;
+  };
+  error?: {
+    code: number;
+    message: string;
+  };
+}
 
-/**
- * 获取或创建 MCP 客户端
- */
-export async function getMCPClient(): Promise<Client> {
-  if (mcpClient) {
-    return mcpClient;
+interface Tool {
+  name: string;
+  description?: string;
+  inputSchema?: Record<string, unknown>;
+}
+
+export class HttpMCPClient {
+  private url: string;
+  private apiKey: string;
+  private sessionId?: string;
+  private requestId = 0;
+
+  constructor(url: string, apiKey: string) {
+    this.url = url;
+    this.apiKey = apiKey;
   }
 
-  try {
-    console.log('=== 创建 MCP 客户端 ===');
-    
-    const pythonPath = process.env.MCP_PYTHON_PATH || '/Users/yindongliang/cloudsway/mcp-server/packages/python/venv/bin/python';
-    const serverPath = process.env.MCP_SERVER_PATH || '/Users/yindongliang/cloudsway/mcp-server/packages/python/server.py';
-    
-    console.log('Python 路径:', pythonPath);
-    console.log('Server 路径:', serverPath);
-    console.log('Scalebox API Key:', process.env.SCALEBOX_API_KEY ? '已设置' : '未设置');
-    
-    // 创建客户端
-    mcpClient = new Client(
-      {
-        name: 'grade-analysis-agent',
-        version: '1.0.0',
-      },
-      {
+  /**
+   * 初始化连接
+   */
+  async initialize(): Promise<void> {
+    const request: MCPRequest = {
+      jsonrpc: '2.0',
+      id: ++this.requestId,
+      method: 'initialize',
+      params: {
+        protocolVersion: '2024-11-05',
         capabilities: {
           tools: {},
         },
-      }
-    );
-
-    // 创建 stdio transport
-    const transport = new StdioClientTransport({
-      command: pythonPath,
-      args: [serverPath],
-      env: {
-        SCALEBOX_API_KEY: process.env.SCALEBOX_API_KEY || '',
-        SCALEBOX_API_URL: process.env.SCALEBOX_API_URL || 'https://api.scalebox.dev',
+        clientInfo: {
+          name: 'grade-analysis-agent',
+          version: '1.0.0',
+        },
       },
-    });
+    };
 
-    console.log('正在连接 MCP 服务器...');
-    // 连接客户端
-    await mcpClient.connect(transport);
-    console.log('MCP 客户端连接成功');
+    const response = await this.sendRequest(request);
+    
+    if (response.error) {
+      throw new Error(`初始化失败: ${response.error.message}`);
+    }
 
-    return mcpClient;
-  } catch (error: any) {
-    console.error('=== MCP 客户端创建失败 ===');
-    console.error('错误:', error);
-    console.error('错误消息:', error.message);
-    console.error('错误堆栈:', error.stack);
-    throw error;
+    console.log('✅ MCP 客户端初始化成功');
   }
-}
 
-/**
- * 调用 MCP 工具
- * @returns 总是返回字符串格式的结果
- */
-export async function callMCPTool(toolName: string, args: any): Promise<string> {
-  try {
-    console.log(`=== 调用 MCP 工具: ${toolName} ===`);
-    console.log('参数:', JSON.stringify(args, null, 2));
-    
-    const client = await getMCPClient();
-    
-    const result = await client.callTool({
-      name: toolName,
-      arguments: args,
-    });
+  /**
+   * 列出可用工具
+   */
+  async listTools(): Promise<Tool[]> {
+    const request: MCPRequest = {
+      jsonrpc: '2.0',
+      id: ++this.requestId,
+      method: 'tools/list',
+    };
 
-    console.log(`工具 ${toolName} 执行完成`);
-    console.log('MCP 原始结果:', JSON.stringify(result, null, 2));
+    const response = await this.sendRequest(request);
+    
+    if (response.error) {
+      throw new Error(`列出工具失败: ${response.error.message}`);
+    }
+
+    return (response.result as { tools: Tool[] })?.tools || [];
+  }
+
+  /**
+   * 调用工具
+   */
+  async callTool(name: string, args: Record<string, unknown>): Promise<string> {
+    const request: MCPRequest = {
+      jsonrpc: '2.0',
+      id: ++this.requestId,
+      method: 'tools/call',
+      params: {
+        name,
+        arguments: args,
+      },
+    };
+
+    const response = await this.sendRequest(request);
+    
+    if (response.error) {
+      throw new Error(`工具调用失败: ${response.error.message}`);
+    }
 
     // 检查是否有错误
-    if (result.isError) {
-      const errorMsg = result.content?.[0]?.text || '工具执行失败';
-      console.error('MCP 工具返回错误:', errorMsg);
+    if (response.result?.isError) {
+      const errorMsg = response.result?.content?.[0]?.text || '工具执行失败';
       throw new Error(errorMsg);
     }
 
     // 解析结果内容
-    if (result.content && Array.isArray(result.content) && result.content.length > 0) {
-      const content = result.content[0] as any;
+    if (response.result?.content && Array.isArray(response.result.content) && response.result.content.length > 0) {
+      const content = response.result.content[0];
       
       if (content.type === 'text' && content.text) {
         // 尝试格式化 JSON，否则返回原文本
@@ -102,35 +126,134 @@ export async function callMCPTool(toolName: string, args: any): Promise<string> 
     }
 
     // 如果没有 content，返回完整 result 的字符串形式
-    console.warn('MCP 返回格式异常，返回完整结果');
-    return JSON.stringify(result, null, 2);
+    return JSON.stringify(response.result, null, 2);
+  }
+
+  /**
+   * 发送请求
+   */
+  private async sendRequest(request: MCPRequest): Promise<MCPResponse> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json, text/event-stream',
+      'X-API-KEY': this.apiKey,
+    };
+
+    // 如果有 session ID，添加到 headers
+    if (this.sessionId) {
+      headers['mcp-session-id'] = this.sessionId;
+    }
+
+    const response = await fetch(this.url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(request),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP 错误: ${response.status} ${response.statusText}`);
+    }
+
+    // 保存 session ID
+    const newSessionId = response.headers.get('mcp-session-id');
+    if (newSessionId && !this.sessionId) {
+      this.sessionId = newSessionId;
+      console.log('Session ID:', this.sessionId);
+    }
+
+    // 解析 SSE 响应
+    const text = await response.text();
+    return this.parseSSEResponse(text);
+  }
+
+  /**
+   * 解析 SSE 响应
+   */
+  private parseSSEResponse(text: string): MCPResponse {
+    const lines = text.split('\n');
     
-  } catch (error: any) {
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        const data = line.substring(6);
+        try {
+          return JSON.parse(data) as MCPResponse;
+        } catch {
+          console.error('解析 SSE 响应失败:', data);
+          throw new Error('无效的响应格式');
+        }
+      }
+    }
+    
+    throw new Error('未找到有效的响应数据');
+  }
+}
+
+// ========== 客户端实例管理 ==========
+
+let httpClient: HttpMCPClient | null = null;
+
+/**
+ * 获取或创建 HTTP MCP 客户端
+ */
+export async function getHttpMCPClient(): Promise<HttpMCPClient> {
+  if (httpClient) {
+    return httpClient;
+  }
+
+  try {
+    console.log('=== 创建 HTTP MCP 客户端 ===');
+    
+    const mcpUrl = process.env.MCP_SERVER_URL || 'https://mcp.scalebox.dev/mcp';
+    const apiKey = process.env.SBX_API_KEY;
+    
+    if (!apiKey) {
+      throw new Error('环境变量 SBX_API_KEY 未设置，请在 .env.local 文件中配置');
+    }
+    
+    console.log('MCP 服务器 URL:', mcpUrl);
+    console.log('API Key:', apiKey.substring(0, 10) + '...');
+    
+    httpClient = new HttpMCPClient(mcpUrl, apiKey);
+    await httpClient.initialize();
+    
+    return httpClient;
+  } catch (error) {
+    console.error('=== HTTP MCP 客户端创建失败 ===');
+    console.error('错误:', error);
+    throw error;
+  }
+}
+
+/**
+ * 调用 MCP 工具
+ */
+export async function callHttpMCPTool(toolName: string, args: Record<string, unknown>): Promise<string> {
+  try {
+    console.log(`=== 调用 MCP 工具: ${toolName} ===`);
+    console.log('参数:', JSON.stringify(args, null, 2));
+    
+    const client = await getHttpMCPClient();
+    const result = await client.callTool(toolName, args);
+    
+    console.log(`工具 ${toolName} 执行完成`);
+    return result;
+  } catch (error) {
+    const err = error as Error;
     console.error(`=== MCP 工具调用失败: ${toolName} ===`);
-    console.error('错误类型:', error.constructor.name);
-    console.error('错误消息:', error.message);
-    console.error('错误堆栈:', error.stack);
-    
-    // 重新抛出，让上层处理
-    throw new Error(`MCP 工具 ${toolName} 失败: ${error.message}`);
+    console.error('错误:', err.message);
+    throw new Error(`MCP 工具 ${toolName} 失败: ${err.message}`);
   }
 }
 
 /**
  * 列出可用工具
  */
-export async function listMCPTools(): Promise<any[]> {
-  const client = await getMCPClient();
-  const result = await client.listTools();
-  return result.tools;
+export async function listHttpMCPTools(): Promise<Tool[]> {
+  const client = await getHttpMCPClient();
+  return await client.listTools();
 }
 
-/**
- * 关闭 MCP 客户端
- */
-export async function closeMCPClient(): Promise<void> {
-  if (mcpClient) {
-    await mcpClient.close();
-    mcpClient = null;
-  }
-}
+// 别名导出（保持兼容性）
+export const getMCPClient = getHttpMCPClient;
+export const callMCPTool = callHttpMCPTool;
+export const listMCPTools = listHttpMCPTools;

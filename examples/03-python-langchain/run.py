@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-LangChain + ChatBedrock + Scalebox MCP 智能体示例
+LangChain + ChatBedrock + Scalebox 智能体示例
 
 使用 LangChain 的经典方式：通过 bind_tools 和多轮对话实现智能体。
 展示 LangChain 如何处理工具调用和对话历史管理。
@@ -29,10 +29,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# ========== Scalebox MCP 工具定义 ==========
+# ========== Scalebox  工具定义 ==========
 
 class ScaleboxTools:
-    """封装 Scalebox MCP 工具"""
+    """封装 Scalebox 工具"""
 
     def __init__(self):
         """初始化 Sandbox 实例"""
